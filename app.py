@@ -751,10 +751,14 @@ with tab3:
             "energy → reliability optimization..."
         ):
 
-           
-           results = run_reliability_optimization(
-    well_id=well_id
-) 
+
+            results = run_reliability_optimization(
+                well_id=well_id
+            )
+
+            pareto_results = find_three_objective_pareto_front(
+                results
+            )
 
 
         # ----------------------------------------------------
