@@ -1567,52 +1567,6 @@ together rather than as independent optimization problems.
         )
 
 
-        # ====================================================
-        # MODEL LIMITATIONS
-        # ====================================================
-
-        with st.expander(
-            "⚠️ Prototype assumptions & limitations"
-        ):
-
-            st.markdown(
-                """
-**Data**
-
-- Well-level Baghewala historian data is not publicly available.
-- The initial prototype therefore uses physics-constrained
-  synthetic data and an external SRP behavioral dataset.
-- The external SRP dataset is **not Baghewala data**.
-
-**Physics**
-
-- Reservoir temperature is represented through a simplified
-  thermal-response model.
-- Viscosity is estimated using a temperature-dependent
-  Arrhenius-type relationship.
-- Production is represented using a prototype mobility/fillage
-  model.
-- Steam energy uses a simplified enthalpy assumption.
-
-**Reliability**
-
-- Reliability is represented by a composite operating-risk
-  indicator.
-- It is **not a statistically validated failure probability**.
-
-**3D Visualization**
-
-- The reservoir thermal field is a visualization mapping.
-- It is **not measured 3D reservoir temperature data**.
-- Equipment geometry is representative rather than a field CAD
-  model.
-
-**Deployment**
-
-- Final operating parameters require calibration and validation
-  using Oil India's historical Baghewala well-level data.
-"""
-            )
 
 
         # ====================================================
