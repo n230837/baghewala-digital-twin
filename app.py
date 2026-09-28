@@ -751,32 +751,10 @@ with tab3:
             "energy → reliability optimization..."
         ):
 
-            candidate_spm_values = [
-                3.5,
-                4.0,
-                4.5,
-                5.0,
-                5.5,
-                6.0,
-                6.5,
-                7.0,
-                7.5
-            ]
-
-            # ------------------------------------------------
-            # EXISTING OPTIMIZATION LOGIC
-            # ------------------------------------------------
-
-            results = run_reliability_optimization(
-                well_id=well_id,
-                candidate_spm_values=candidate_spm_values
-            )
-
-            pareto_results = (
-                find_three_objective_pareto_front(
-                    results
-                )
-            )
+           
+           results = run_reliability_optimization(
+    well_id=well_id
+) 
 
 
         # ----------------------------------------------------
