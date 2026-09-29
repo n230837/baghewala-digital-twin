@@ -21,6 +21,7 @@ import pandas as pd
 import plotly.express as px
 
 from thermal_model import simulate_css_cycle
+st.write("THERMAL MODEL LOADED FROM:", __import__("thermal_model").__file__)
 from viscosity_model_v2 import calculate_viscosity
 from production_model_v2 import calculate_production_rate
 
