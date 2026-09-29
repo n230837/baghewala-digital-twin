@@ -9,6 +9,14 @@ INITIAL_RESERVOIR_TEMP_C = 47.0
 
 DEFAULT_STEAM_TEMPERATURE_C = 285.0
 
+DEFAULT_INJECTION_PRESSURE_PSI = 1600.0
+MIN_INJECTION_PRESSURE_PSI = 0.0
+MAX_INJECTION_PRESSURE_PSI = 3000.0
+
+DEFAULT_PRODUCTION_CUTOFF_BPD = 30.0
+MIN_PRODUCTION_CUTOFF_BPD = 0.0
+MAX_PRODUCTION_CUTOFF_BPD = 1000.0
+
 MIN_STEAM_TEMPERATURE_C = 250.0
 MAX_STEAM_TEMPERATURE_C = 320.0
 
@@ -171,11 +179,41 @@ def simulate_css_cycle(
     steam_volume_m3=500.0,
     injection_days=14.0,
     soak_days=7.0,
-    cooling_rate=0.01
+    cooling_rate=0.01,
+    injection_pressure_psi=DEFAULT_INJECTION_PRESSURE_PSI,
+    production_cutoff_bpd=DEFAULT_PRODUCTION_CUTOFF_BPD
 ):
     """
     Simulate one CSS cycle.
+
+    Injection pressure and production cut-off are currently retained
+    as operational inputs. They are returned in the CSS state but are
+    not yet coupled to the reduced-order thermal equations.
     """
+
+    if not (
+        MIN_INJECTION_PRESSURE_PSI
+        <= injection_pressure_psi
+        <= MAX_INJECTION_PRESSURE_PSI
+    ):
+        raise ValueError(
+            f"Injection pressure should be between "
+            f"{MIN_INJECTION_PRESSURE_PSI} and "
+            f"{MAX_INJECTION_PRESSURE_PSI} psi."
+        )
+
+    injection_pressure_pa = injection_pressure_psi * 6894.757293168
+
+    if not (
+        MIN_PRODUCTION_CUTOFF_BPD
+        <= production_cutoff_bpd
+        <= MAX_PRODUCTION_CUTOFF_BPD
+    ):
+        raise ValueError(
+            f"Production cut-off should be between "
+            f"{MIN_PRODUCTION_CUTOFF_BPD} and "
+            f"{MAX_PRODUCTION_CUTOFF_BPD} BPD."
+        )
 
     heated_temperature = (
         calculate_reservoir_temperature(
@@ -224,7 +262,16 @@ def simulate_css_cycle(
             soak_days,
 
         "steam_volume_m3":
-            steam_volume_m3
+            steam_volume_m3,
+
+        "injection_pressure_psi":
+            injection_pressure_psi,
+
+        "injection_pressure_pa":
+            injection_pressure_pa,
+
+        "production_cutoff_bpd":
+            production_cutoff_bpd
     }
 
 

@@ -68,6 +68,84 @@ def calculate_steam_energy(
     return energy_kwh
 
 
+def calculate_energy_per_barrel(
+    energy_kwh,
+    oil_production_bpd,
+    production_days
+):
+    """
+    Calculate energy consumed per barrel of produced oil.
+
+    Energy per barrel = total energy / total oil produced.
+    """
+
+    if energy_kwh < 0:
+        raise ValueError(
+            "Energy cannot be negative."
+        )
+
+    if oil_production_bpd <= 0:
+        raise ValueError(
+            "Oil production must be positive."
+        )
+
+    if production_days <= 0:
+        raise ValueError(
+            "Production duration must be positive."
+        )
+
+    total_oil_barrels = (
+        oil_production_bpd
+        * production_days
+    )
+
+    energy_per_barrel_kwh = (
+        energy_kwh
+        / total_oil_barrels
+    )
+
+    return energy_per_barrel_kwh
+
+
+def calculate_operating_cost(
+    energy_kwh,
+    steam_volume_m3,
+    electricity_cost_per_kwh,
+    steam_cost_per_m3
+):
+    """
+    Calculate prototype CSS operating cost from energy and steam costs.
+
+    Total operating cost =
+        electricity cost + steam cost
+
+    This is an operational cost estimate and depends on user-supplied
+    economic assumptions; it is not a calibrated Baghewala field cost.
+    """
+
+    if energy_kwh < 0:
+        raise ValueError("Energy cannot be negative.")
+
+    if steam_volume_m3 < 0:
+        raise ValueError("Steam volume cannot be negative.")
+
+    if electricity_cost_per_kwh < 0:
+        raise ValueError("Electricity cost cannot be negative.")
+
+    if steam_cost_per_m3 < 0:
+        raise ValueError("Steam cost cannot be negative.")
+
+    electricity_cost = energy_kwh * electricity_cost_per_kwh
+    steam_cost = steam_volume_m3 * steam_cost_per_m3
+    total_operating_cost = electricity_cost + steam_cost
+
+    return {
+        "electricity_cost": electricity_cost,
+        "steam_cost": steam_cost,
+        "total_operating_cost": total_operating_cost
+    }
+
+
 if __name__ == "__main__":
 
     print("================================================")

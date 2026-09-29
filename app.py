@@ -23,6 +23,44 @@ import plotly.express as px
 from thermal_model import simulate_css_cycle
 from viscosity_model_v2 import calculate_viscosity
 from production_model_v2 import calculate_production_rate
+
+# Optional performance/energy backends. The app keeps small fallbacks so
+# the UI remains runnable if a backend file has not yet been renamed.
+try:
+    from production_model_v2 import calculate_steam_oil_ratio
+except ImportError:
+    calculate_steam_oil_ratio = None
+
+try:
+    from steam_energy_model import (
+        calculate_steam_energy,
+        calculate_energy_per_barrel,
+    )
+except ImportError:
+    try:
+        from steam_energy_model_updated import (
+            calculate_steam_energy,
+            calculate_energy_per_barrel,
+        )
+    except ImportError:
+        calculate_steam_energy = None
+        calculate_energy_per_barrel = None
+
+try:
+    from steam_energy_model import calculate_operating_cost
+except ImportError:
+    try:
+        from stran_energy import calculate_operating_cost
+    except ImportError:
+        calculate_operating_cost = None
+
+try:
+    from srp_physics_model import estimate_srp_physics_state
+except ImportError:
+    try:
+        from physics_updated import estimate_srp_physics_state
+    except ImportError:
+        estimate_srp_physics_state = None
 from srp_candidate_predictor import predict_candidate
 from srp_reliability_model import calculate_reliability_score
 from srp_failure_detection import evaluate_srp_condition
@@ -203,6 +241,22 @@ soak_days = st.sidebar.slider(
     1
 )
 
+injection_pressure_psi = st.sidebar.number_input(
+    "Injection Pressure (psi)",
+    min_value=0.0,
+    max_value=3000.0,
+    value=1600.0,
+    step=50.0
+)
+
+production_cutoff_bpd = st.sidebar.number_input(
+    "Production Cut-off (BPD)",
+    min_value=0.0,
+    max_value=1000.0,
+    value=30.0,
+    step=1.0
+)
+
 
 # ============================================================
 # SRP / VFD CONTROL
@@ -224,6 +278,40 @@ vfd_state = evaluate_vfd_setting(
 
 spm = vfd_state["spm"]
 
+stroke_length_m = st.sidebar.number_input(
+    "Stroke Length (m)",
+    min_value=0.1,
+    max_value=10.0,
+    value=2.5,
+    step=0.1
+)
+
+pump_efficiency = st.sidebar.slider(
+    "Pump Efficiency",
+    0.50,
+    1.00,
+    1.00,
+    0.01
+)
+
+st.sidebar.markdown("### 💰 ECONOMIC ASSUMPTIONS")
+
+electricity_cost_per_kwh = st.sidebar.number_input(
+    "Electricity Cost (₹/kWh)",
+    min_value=0.0,
+    max_value=100.0,
+    value=10.0,
+    step=0.5
+)
+
+steam_cost_per_m3 = st.sidebar.number_input(
+    "Steam Cost (₹/m³)",
+    min_value=0.0,
+    max_value=10000.0,
+    value=20.0,
+    step=10.0
+)
+
 
 # ============================================================
 # DIGITAL TWIN CALCULATIONS
@@ -234,7 +322,9 @@ thermal = simulate_css_cycle(
     steam_temperature_c=steam_temperature,
     steam_volume_m3=steam_volume,
     injection_days=injection_days,
-    soak_days=soak_days
+    soak_days=soak_days,
+    injection_pressure_psi=injection_pressure_psi,
+    production_cutoff_bpd=production_cutoff_bpd
 )
 
 production_temperature = (
@@ -254,8 +344,110 @@ srp = predict_candidate(
 production = calculate_production_rate(
     viscosity_cp=viscosity,
     pump_fillage_percent=srp["predicted_pump_fillage"],
-    pump_efficiency=1.0
+    pump_efficiency=pump_efficiency
 )
+
+# ============================================================
+# ADDITIONAL PERFORMANCE / ECONOMIC INDICATORS
+# ============================================================
+
+if calculate_steam_energy is not None:
+    steam_energy_kwh = calculate_steam_energy(
+        steam_volume_m3=steam_volume,
+        steam_temperature_c=steam_temperature,
+        injection_days=injection_days
+    )
+else:
+    # Same prototype relationship used by the existing energy backend.
+    steam_energy_kwh = (
+        steam_volume * 700.0 * (steam_temperature / 285.0)
+    )
+
+production_days_for_metrics = max(float(injection_days), 1.0)
+
+if calculate_steam_oil_ratio is not None:
+    sor = calculate_steam_oil_ratio(
+        steam_volume_m3=steam_volume,
+        oil_production_bpd=production,
+        production_days=production_days_for_metrics
+    )
+else:
+    sor = (
+        steam_volume
+        / (production * production_days_for_metrics * 0.1589872949)
+        if production > 0 else 0.0
+    )
+
+if calculate_energy_per_barrel is not None:
+    energy_per_barrel = calculate_energy_per_barrel(
+        energy_kwh=steam_energy_kwh,
+        oil_production_bpd=production,
+        production_days=production_days_for_metrics
+    )
+else:
+    energy_per_barrel = (
+        steam_energy_kwh / (production * production_days_for_metrics)
+        if production > 0 else 0.0
+    )
+
+if calculate_operating_cost is not None:
+    operating_cost_result = calculate_operating_cost(
+        energy_kwh=steam_energy_kwh,
+        steam_volume_m3=steam_volume,
+        electricity_cost_per_kwh=electricity_cost_per_kwh,
+        steam_cost_per_m3=steam_cost_per_m3
+    )
+else:
+    operating_cost_result = (
+        steam_energy_kwh * electricity_cost_per_kwh
+        + steam_volume * steam_cost_per_m3
+    )
+
+# The economic backend may return either a numeric total cost or a
+# dictionary containing cost details. Normalize it to one numeric value
+# for the Streamlit metrics.
+if isinstance(operating_cost_result, dict):
+    operating_cost = operating_cost_result.get(
+        "total_operating_cost",
+        operating_cost_result.get(
+            "total_cost",
+            operating_cost_result.get(
+                "operating_cost",
+                operating_cost_result.get("cost", 0.0)
+            )
+        )
+    )
+else:
+    operating_cost = operating_cost_result
+
+operating_cost = float(operating_cost)
+
+production_cutoff_status = (
+    "ABOVE CUT-OFF"
+    if production >= production_cutoff_bpd
+    else "BELOW CUT-OFF"
+)
+
+# Pump unsetting is a separate prototype condition and does not duplicate
+# the existing rod-floating or impact-loading detector.
+pump_unsetting = (
+    "WARNING"
+    if srp["predicted_pump_fillage"] < 50.0
+    else "NORMAL"
+)
+
+if estimate_srp_physics_state is not None:
+    try:
+        srp_physics = estimate_srp_physics_state(
+            viscosity_cp=viscosity,
+            spm=spm,
+            stroke_length_m=stroke_length_m
+        )
+    except Exception:
+        srp_physics = None
+else:
+    srp_physics = None
+
 
 risk = calculate_reliability_score(
     viscosity_cp=viscosity,
@@ -356,6 +548,54 @@ with tab1:
 
 
     # ========================================================
+    # PERFORMANCE / ECONOMICS
+    # ========================================================
+
+    st.divider()
+
+    st.markdown(
+        '<div class="section-title">'
+        '📊 PERFORMANCE & ECONOMICS'
+        '</div>',
+        unsafe_allow_html=True
+    )
+
+    p1, p2, p3, p4 = st.columns(4)
+
+    with p1:
+        st.metric("STEAM-OIL RATIO", f"{sor:.2f} m³/m³")
+
+    with p2:
+        st.metric("ENERGY PER BARREL", f"{energy_per_barrel:,.1f} kWh/bbl")
+
+    with p3:
+        st.metric("OPERATING COST", f"₹{operating_cost:,.0f}")
+
+    with p4:
+        st.metric("PUMP EFFICIENCY", f"{pump_efficiency * 100:.0f}%")
+
+    p5, p6, p7 = st.columns(3)
+
+    with p5:
+        st.metric("INJECTION PRESSURE", f"{injection_pressure_psi:,.0f} psi")
+
+    with p6:
+        st.metric("PRODUCTION CUT-OFF", f"{production_cutoff_bpd:.1f} BPD")
+        if production_cutoff_status == "ABOVE CUT-OFF":
+            st.success(production_cutoff_status)
+        else:
+            st.warning(production_cutoff_status)
+
+    with p7:
+        st.metric("STROKE LENGTH", f"{stroke_length_m:.1f} m")
+
+    st.caption(
+        "Prototype performance/economic indicators. Cost assumptions are user-configurable "
+        "and require field/economic calibration before operational use."
+    )
+
+
+    # ========================================================
     # PIPELINE
     # ========================================================
 
@@ -453,6 +693,9 @@ with tab1:
                     "Pump Speed",
                     "Pump Fillage",
                     "Rod Load Range",
+                    "Stroke Length",
+                    "Pump Efficiency",
+                    "Pump Unsetting",
                     "SPM Bin",
                     "Calibration"
                 ],
@@ -463,6 +706,9 @@ with tab1:
                     f"{spm:.1f} SPM",
                     f"{srp['predicted_pump_fillage']:.2f}%",
                     f"{srp['state_load_range']:.1f} kg",
+                    f"{stroke_length_m:.1f} m",
+                    f"{pump_efficiency * 100:.1f}%",
+                    pump_unsetting,
                     srp["spm_bin"],
                     srp["calibration_status"]
                 ]
@@ -695,6 +941,36 @@ with tab2:
             "🛢️ Production",
             f"{production:.2f} BPD"
         )
+
+
+    st.divider()
+
+    st.markdown(
+        '<div class="section-title">'
+        '📊 OPERATING PERFORMANCE'
+        '</div>',
+        unsafe_allow_html=True
+    )
+
+    q1, q2, q3, q4 = st.columns(4)
+
+    with q1:
+        st.metric("SOR", f"{sor:.2f} m³/m³")
+    with q2:
+        st.metric("Energy / Barrel", f"{energy_per_barrel:,.1f} kWh/bbl")
+    with q3:
+        st.metric("Operating Cost", f"₹{operating_cost:,.0f}")
+    with q4:
+        st.metric("Pump Efficiency", f"{pump_efficiency * 100:.1f}%")
+
+    q5, q6, q7 = st.columns(3)
+
+    with q5:
+        st.metric("Injection Pressure", f"{injection_pressure_psi:,.0f} psi")
+    with q6:
+        st.metric("Production Cut-off", f"{production_cutoff_bpd:.1f} BPD")
+    with q7:
+        st.metric("Stroke Length", f"{stroke_length_m:.1f} m")
 
 
     st.info(
@@ -1695,7 +1971,7 @@ with tab4:
         rod_load_range=srp["state_load_range"]
     )
 
-    f1, f2, f3 = st.columns(3)
+    f1, f2, f3, f4 = st.columns(4)
 
     with f1:
         st.metric(
@@ -1733,6 +2009,16 @@ with tab4:
         else:
             st.error(failure_state["overall_srp_condition"])
 
+    with f4:
+        st.metric(
+            "🛠️ PUMP UNSETTING",
+            pump_unsetting
+        )
+        if pump_unsetting == "NORMAL":
+            st.success(pump_unsetting)
+        else:
+            st.warning(pump_unsetting)
+
     st.divider()
 
     st.markdown("### CURRENT SRP CONDITIONS")
@@ -1742,17 +2028,21 @@ with tab4:
             "Reference Well",
             "VFD Frequency",
             "Pump Speed",
+            "Stroke Length",
             "Pump Fillage",
             "Rod Load Range",
-            "Oil Viscosity"
+            "Oil Viscosity",
+            "Pump Unsetting"
         ],
         "Current Value": [
             well_id,
             f"{vfd_frequency:.1f} Hz",
             f"{spm:.1f} SPM",
+            f"{stroke_length_m:.1f} m",
             f"{srp['predicted_pump_fillage']:.1f}%",
             f"{srp['state_load_range']:.1f} kg",
-            f"{viscosity:,.0f} cP"
+            f"{viscosity:,.0f} cP",
+            pump_unsetting
         ]
     })
 

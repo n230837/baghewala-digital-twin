@@ -86,6 +86,49 @@ def calculate_production_rate(
     return production_bpd
 
 
+# ============================================================
+# STEAM-OIL RATIO (SOR)
+# ============================================================
+
+BARREL_TO_M3 = 0.1589872949
+
+
+def calculate_steam_oil_ratio(
+    steam_volume_m3,
+    oil_production_bpd,
+    production_days
+):
+    """
+    Calculate cumulative Steam-Oil Ratio (SOR).
+
+    SOR = steam volume / cumulative oil volume
+
+    Steam volume is in m³.
+    Oil production is supplied as BPD and converted to m³
+    over the specified production period.
+
+    This is a prototype performance metric and does not
+    represent a field-calibrated Baghewala SOR.
+    """
+
+    if steam_volume_m3 < 0:
+        raise ValueError("Steam volume cannot be negative.")
+
+    if oil_production_bpd <= 0:
+        raise ValueError("Oil production must be positive.")
+
+    if production_days <= 0:
+        raise ValueError("Production days must be positive.")
+
+    cumulative_oil_m3 = (
+        oil_production_bpd
+        * production_days
+        * BARREL_TO_M3
+    )
+
+    return steam_volume_m3 / cumulative_oil_m3
+
+
 if __name__ == "__main__":
 
     print("================================================")
